@@ -1,2 +1,19 @@
-/.quarto/
-**/*.quarto_ipynb
+.Rhistory
+.RData
+.Rproj.user/
+.Ruserdata
+.Renviron
+
+# macOS
+.DS_Store
+
+# Quarto
+_site/
+.quarto/
+
+# renv
+renv/library/
+renv/staging/
+
+# LFS
+*.geojson
