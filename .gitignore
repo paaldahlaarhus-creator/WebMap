@@ -1,19 +1,22 @@
+# R
 .Rhistory
 .RData
 .Rproj.user/
-.Ruserdata
-.Renviron
+
+# Quarto
+*.html
+*.pdf
+*.docx
+*.pptx
+*/_site/
+cache/
+.quarto/
 
 # macOS
 .DS_Store
 
-# Quarto
-_site/
-.quarto/
+# Python (bare i tilfelle)
+__pycache__/
 
-# renv
-renv/library/
-renv/staging/
-
-# LFS
-*.geojson
+# Temp
+*.tmp
