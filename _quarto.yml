@@ -7,15 +7,12 @@ website:
     left:
       - href: index.qmd
         text: Home
-      - about.qmd
+      - href: map.qmd
+        text: Kart
 
 format:
   html:
-    theme:
-      - cosmo
-      - brand
+    theme: default
     css: styles.css
-    toc: true
-
-editor: visual
+  
 
