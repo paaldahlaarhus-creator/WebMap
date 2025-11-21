@@ -1,0 +1,55 @@
+---
+title: "Kart: fylker og kommuner"
+format: html
+---
+
+```{r}
+library(sf)
+library(leaflet)
+library(htmlwidgets)
+
+# Paths to geojson files
+kommuner_path <- "www/assets/kommuner.geojson"
+fylker_path   <- "www/assets/fylker.geojson"
+
+# Read data
+fylker <- st_read(fylker_path, quiet = FALSE)
+kommuner <- st_read(kommuner_path, quiet = FALSE)
+
+# Fix CRS
+if (is.na(st_crs(fylker))) st_crs(fylker) <- 4258
+if (is.na(st_crs(kommuner))) st_crs(kommuner) <- 4258
+fylker <- st_transform(fylker, 4326)
+kommuner <- st_transform(kommuner, 4326)
+
+# Find label columns
+label_fylke <- names(fylker)[grep("navn|name", names(fylker), ignore.case = TRUE)][1]
+label_kommune <- names(kommuner)[grep("navn|name", names(kommuner), ignore.case = TRUE)][1]
+
+# Fallback
+if (is.na(label_fylke)) label_fylke <- names(fylker)[1]
+if (is.na(label_kommune)) label_kommune <- names(kommuner)[1]
+
+leaflet() %>%
+  addTiles() %>%
+  addPolygons(
+    data = fylker,
+    group = "fylker",
+    label = ~ get(label_fylke),
+    color = "red",
+    weight = 1,
+    fillOpacity = 0.2
+  ) %>%
+  addPolygons(
+    data = kommuner,
+    group = "kommuner",
+    label = ~ get(label_kommune),
+    color = "blue",
+    weight = 1,
+    fillOpacity = 0.3
+  ) %>%
+  addLayersControl(
+    overlayGroups = c("fylker", "kommuner"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+```
