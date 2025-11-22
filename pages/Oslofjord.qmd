@@ -1,0 +1,62 @@
+---
+title: "Oslofjorden"
+format: html
+---
+
+```{r}
+library(here)
+library(qs)
+library(sf)
+library(leaflet)
+library(htmltools)
+library(dplyr)
+
+# helper: load qs if available, fallback to geojson
+read_map <- function(qs_path, geojson_path) {
+  if (file.exists(qs_path)) {
+    tryCatch(
+      qs::qread(qs_path),
+      error = function(e) {
+        message("Could not read .qs, using GeoJSON instead.")
+        st_read(geojson_path, quiet = TRUE)
+      }
+    )
+  } else {
+    st_read(geojson_path, quiet = TRUE)
+  }
+}
+
+# load kommuner
+komm_qs  <- here("data", "kommuner.qs")
+komm_geo <- here("www", "assets", "kommuner.geojson")
+kommuner <- read_map(komm_qs, komm_geo)
+
+# ensure CRS
+if (is.na(st_crs(kommuner))) st_crs(kommuner) <- 4258
+kommuner <- st_transform(kommuner, 4326)
+
+# choose name column
+lab_komm <- names(kommuner)[grepl("kommunenavn", names(kommuner), ignore.case = TRUE)][1]
+
+# Oslofjord municipalities using correct names
+oslofjord_names <- c(
+  "Oslo","Bærum","Asker","Nesodden","Frogn","Ås","Vestby","Moss",
+  "Fredrikstad","Hvaler","Tønsberg","Horten","Larvik","Sandefjord",
+  "Færder"
+)
+
+# filter
+of_komm <- kommuner |> filter(get(lab_komm) %in% oslofjord_names)
+
+# build map
+leaflet(of_komm) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addPolygons(
+    color = "#2166ac",
+    fillOpacity = 0.4,
+    weight = 1,
+    label = ~ get(lab_komm)
+  ) %>%
+  setView(lng = 10.5, lat = 59.2, zoom = 9)
+```
+---

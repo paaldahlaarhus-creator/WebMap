@@ -1,0 +1,99 @@
+---
+title: "Fylker og kommuner"
+format: html
+---
+
+```{r}
+library(here)
+library(qs)
+library(sf)
+library(leaflet)
+library(htmltools)
+
+# Optional local image (change to a file in www/assets if you add it there)
+site_image <- "/mnt/data/Screenshot 2025-11-12 at 18.55.31.png"
+
+# helper to read fast .qs or fallback to GeoJSON
+read_map <- function(qs_path, geojson_path) {
+  if (file.exists(qs_path)) {
+    tryCatch(qs::qread(qs_path),
+             error = function(e) {
+               message("Failed to read ", qs_path, " (", e$message, "). Falling back to GeoJSON.")
+               st_read(geojson_path, quiet = TRUE)
+             })
+  } else if (file.exists(geojson_path)) {
+    message("Preprocessed .qs not found; reading raw GeoJSON (this may be slow).")
+    st_read(geojson_path, quiet = TRUE)
+  } else {
+    stop("Neither ", qs_path, " nor ", geojson_path, " exist.")
+  }
+}
+
+# paths
+kommuner_qs <- here("data","kommuner.qs")
+fylker_qs   <- here("data","fylker.qs")
+kommuner_geo <- here("www","assets","kommuner.geojson")
+fylker_geo   <- here("www","assets","fylker.geojson")
+
+# load
+kommuner <- read_map(kommuner_qs, kommuner_geo)
+fylker   <- read_map(fylker_qs,   fylker_geo)
+
+# ensure CRS 4326 (WGS84)
+if (is.na(st_crs(kommuner))) st_crs(kommuner) <- 4258
+if (is.na(st_crs(fylker)))   st_crs(fylker)   <- 4258
+kommuner <- st_transform(kommuner, 4326)
+fylker   <- st_transform(fylker,   4326)
+
+# helper to pick label column
+pick_label <- function(x) {
+  nm <- names(x)
+  cand <- nm[grepl("navn|name|kommunenavn|administrativenhetnavn", nm, ignore.case = TRUE)]
+  if (length(cand)) return(cand[1])
+  nm[1]
+}
+lab_komm <- pick_label(kommuner)
+lab_fylk <- pick_label(fylker)
+
+# popup helper
+popup_html <- function(df, labcol) {
+  vals <- as.character(df[[labcol]])
+  vapply(vals, htmlEscape, FUN.VALUE = character(1))
+}
+
+komm_popup <- popup_html(kommuner, lab_komm)
+fylk_popup <- popup_html(fylker, lab_fylk)
+
+# colors
+col_fylke <- "#d73027"
+col_komm  <- "#4575b4"
+
+# build map with layers control
+leaflet(options = leafletOptions(zoomControl = TRUE)) %>%
+  addProviderTiles(providers$CartoDB.Positron, group = "Bakgrunn") %>%
+  addPolygons(
+    data = fylker,
+    group = "Fylker",
+    color = col_fylke,
+    weight = 1,
+    fillOpacity = 0.25,
+    label = ~ htmltools::HTML(paste0("<b>", htmlEscape(get(lab_fylk)), "</b>")),
+    popup = ~ fylk_popup,
+    highlight = highlightOptions(weight = 3, bringToFront = TRUE)
+  ) %>%
+  addPolygons(
+    data = kommuner,
+    group = "Kommuner",
+    color = col_komm,
+    weight = 0.8,
+    fillOpacity = 0.35,
+    label = ~ htmltools::HTML(htmlEscape(get(lab_komm))),
+    popup = ~ komm_popup,
+    highlight = highlightOptions(weight = 3, bringToFront = TRUE)
+  ) %>%
+  addLayersControl(
+    baseGroups = c("Bakgrunn"),
+    overlayGroups = c("Fylker", "Kommuner"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+```

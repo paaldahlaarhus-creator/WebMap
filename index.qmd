@@ -1,55 +1,103 @@
----
-title: "Kart: fylker og kommuner"
-format: html
----
-
 ```{r}
+# Load required packages
+library(here)
+library(qs)
 library(sf)
 library(leaflet)
-library(htmlwidgets)
+library(htmltools)
 
-# Paths to geojson files
-kommuner_path <- "www/assets/kommuner.geojson"
-fylker_path   <- "www/assets/fylker.geojson"
+# Local screenshot (you provided this file)
+site_image <- "/mnt/data/Screenshot 2025-11-12 at 18.55.31.png"
 
-# Read data
-fylker <- st_read(fylker_path, quiet = FALSE)
-kommuner <- st_read(kommuner_path, quiet = FALSE)
+# Helper: safe read .qs (fast) or fallback to GeoJSON (slower)
+read_map <- function(qs_path, geojson_path) {
+  if (file.exists(qs_path)) {
+    tryCatch(qs::qread(qs_path), error = function(e) {
+      message("Failed to read ", qs_path, " (", e$message, "). Falling back to GeoJSON.")
+      st_read(geojson_path, quiet = TRUE)
+    })
+  } else if (file.exists(geojson_path)) {
+    message("Preprocessed .qs not found; reading raw GeoJSON (this may be slow).")
+    st_read(geojson_path, quiet = TRUE)
+  } else {
+    stop("Neither ", qs_path, " nor ", geojson_path, " exist.")
+  }
+}
 
-# Fix CRS
-if (is.na(st_crs(fylker))) st_crs(fylker) <- 4258
+# Paths (relative to project root)
+kommuner_qs <- here("data", "kommuner.qs")
+fylker_qs   <- here("data", "fylker.qs")
+
+kommuner_geo <- here("www", "assets", "kommuner.geojson")
+fylker_geo   <- here("www", "assets", "fylker.geojson")
+
+# Read data (fast if qs exist)
+kommuner <- read_map(kommuner_qs, kommuner_geo)
+fylker   <- read_map(fylker_qs,   fylker_geo)
+
+# Ensure geometry CRS is WGS84 for leaflet
 if (is.na(st_crs(kommuner))) st_crs(kommuner) <- 4258
-fylker <- st_transform(fylker, 4326)
+if (is.na(st_crs(fylker)))   st_crs(fylker)   <- 4258
 kommuner <- st_transform(kommuner, 4326)
+fylker   <- st_transform(fylker,   4326)
 
-# Find label columns
-label_fylke <- names(fylker)[grep("navn|name", names(fylker), ignore.case = TRUE)][1]
-label_kommune <- names(kommuner)[grep("navn|name", names(kommuner), ignore.case = TRUE)][1]
+# Find a sensible label column (try common names)
+find_label <- function(x) {
+  nm <- names(x)
+  cand <- nm[grepl("navn|name|kommunenavn|administrativenhetnavn", nm, ignore.case = TRUE)]
+  if (length(cand)) return(cand[1])
+  return(nm[1])
+}
+label_kommune <- find_label(kommuner)
+label_fylke   <- find_label(fylker)
 
-# Fallback
-if (is.na(label_fylke)) label_fylke <- names(fylker)[1]
-if (is.na(label_kommune)) label_kommune <- names(kommuner)[1]
+# Simple popup text (escape HTML)
+popup_text <- function(df, labcol) {
+  vals <- as.character(df[[labcol]])
+  htmlEscape(vals)
+}
 
-leaflet() %>%
-  addTiles() %>%
+komm_popup <- popup_text(kommuner, label_kommune)
+fylk_popup  <- popup_text(fylker,   label_fylke)
+
+# Colours / palette
+fylke_color <- "#D73027"   # red-ish
+komm_color  <- "#4575B4"   # blue-ish
+
+# Initial map view (Norway center) - adjust if you prefer different default
+init_lat <- 64
+init_lng <- 12
+init_zoom <- 5
+
+# Build leaflet map
+m <- leaflet(options = leafletOptions(zoomControl = TRUE)) %>%
+  addProviderTiles(providers$CartoDB.Positron, group = "Base") %>%
   addPolygons(
     data = fylker,
-    group = "fylker",
-    label = ~ get(label_fylke),
-    color = "red",
+    color = fylke_color,
     weight = 1,
-    fillOpacity = 0.2
+    fillOpacity = 0.25,
+    label = ~ htmltools::HTML(paste0("<b>", htmlEscape(get(label_fylke)), "</b>")),
+    popup = ~ fylk_popup,
+    group = "Fylker",
+    highlight = highlightOptions(weight = 3, bringToFront = TRUE)
   ) %>%
   addPolygons(
     data = kommuner,
-    group = "kommuner",
-    label = ~ get(label_kommune),
-    color = "blue",
-    weight = 1,
-    fillOpacity = 0.3
+    color = komm_color,
+    weight = 0.8,
+    fillOpacity = 0.35,
+    label = ~ htmltools::HTML(paste0(htmlEscape(get(label_kommune)))),
+    popup = ~ komm_popup,
+    group = "Kommuner",
+    highlight = highlightOptions(weight = 3, bringToFront = TRUE)
   ) %>%
   addLayersControl(
-    overlayGroups = c("fylker", "kommuner"),
+    baseGroups = c("Base"),
+    overlayGroups = c("Fylker", "Kommuner"),
     options = layersControlOptions(collapsed = FALSE)
-  )
-```
+  ) %>%
+  setView(lng = init_lng, lat = init_lat, zoom = init_zoom)
+
+# Print map
+m

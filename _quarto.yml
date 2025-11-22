@@ -2,17 +2,18 @@ project:
   type: website
 
 website:
-  title: "my_Oslofjord_site"
+  title: "Oslofjorden WebMap"
   navbar:
     left:
       - href: index.qmd
-        text: Home
-      - href: map.qmd
-        text: Kart
+        text: "Global natur"
+      - href: pages/Oslofjord.qmd
+        text: "Oslofjorden"
+      - href: pages/kommunekart.qmd
+        text: "Kommunekart"
 
 format:
   html:
-    theme: default
+    theme: cosmo
     css: styles.css
-  
-
+    toc: false

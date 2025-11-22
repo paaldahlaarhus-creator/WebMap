@@ -20,3 +20,5 @@ __pycache__/
 
 # Temp
 *.tmp
+/.quarto/
+**/*.quarto_ipynb
