@@ -1,110 +1,46 @@
-```{r}
-# Laster inn nødvendige pakker
-library(here) 
-library(qs) 
-library(sf) 
-library(leaflet) 
-library(htmltools)  
+---
+title: "Oslofjorden WebMap"
+format: html
+---
 
-# Hjelpefunksjon: prøv å lese .qs (raskt), fall tilbake til GeoJSON (tregere)
-les_kartdata <- function(sti_qs, sti_geosjon) {
-  if (file.exists(sti_qs)) {
-    tryCatch(qs::qread(sti_qs), error = function(e) {
-      message("Kunne ikke lese ", qs_path, " (", e$message, "). Leser GeoJSON i stedet.")
-      st_read(sti_geojson, quiet = TRUE)
-    })
-  } else if (file.exists(sti_geojson)) {
-    message("Fant ikke .qs. Leser rå GeoJSON.")
-    st_read(sti_geojson, quiet = TRUE)
-  } else {
-    stop("Fant verken ", sti_qs, " eller ", sti_geojson, ".")
-  }
-}
+Økosystemet i Oslofjorden er under press. Bestandene av kysttorsk og flere andre fiskearter har gått kraftig tilbake, og i store deler av fjorden er det nå forbudt å fiske. Mange ålegrasenger og tareskoger, som er viktige leveområder for fisk og andre arter, har også forsvunnet. 
 
-# Filstier til kartdata
-sti_kommuner_qs      <- here("data", "kommuner.qs")
-sti_fylker_qs        <- here("data", "fylker.qs")
-sti_kommuner_geojson <- here("www", "assets", "kommuner.geojson")
-sti_fylker_geojson   <- here("www", "assets", "fylker.geojson")
+Under ser du informasjon over hvordan den økologiske tilstanden måles og hva de ulike kvalitetselementene er.
 
-# Leser inn kommune- og fylkesdata
-kommunedata <- les_kartdata(sti_kommuner_qs, sti_kommuner_geojson)
-fylkesdata  <- les_kartdata(sti_fylker_qs, sti_fylker_geojson)
+## EQR (Ecological Quality Ratio)
 
-# Sørger for at kartdata har kjent koordinatsystem, og konverter til WGS84 (EPSG:4328)
-if (is.na(st_crs(kommunedata))) st_crs(kommunedata) <- 4258
-if (is.na(st_crs(fylkesdata)))  st_crs(fylkesdata)  <- 4258
+Den økologiske tilstanden klassifiseres i fem ulike klasser, basert på biologiske kvalitetselementer og andre støtteparametere, målt i EQR {0,1} 
 
-kommunedata <- st_transform(kommunedata, 4326)
-fylkesdata  <- st_transform(fylkesdata,  4326)
+Ecological Quality Ratio = Observert verdi / Naturtilstand = {0,1} 
 
-# Finn kolonnen som inneholder kommunenavn/fylkesnavn
-finn_navnekolonne <- function(df) {
-  kolonnenavn <- names(df)
-  kandidater <- kolonnenavn[
-    grepl("navn|name|kommunenavn|administrativenhetnavn",
-          kolonnenavn, ignore.case = TRUE)
-    ]
-  if (length(kandidater) > 0) {
-  return(kandidater[1])
-}
+![EQR](images/eqr.png)
 
-kolonne_kommunenavn <- finn_navnekolonne(kommunedata)
-kolonne_fylkesnavn  <- finn_navnekolonne(fylkesdata)
 
-# Lag popup-tekst (HTML-sikret)
-lag_popuptekst <- function(df, kolonne) {
-  htmlEscape(as.character(df[[kolonne]]))
-}
+## Økologiske kvalitetselementer 
 
-popup_kommuner <- lag_popup_tekst(kommunedata, kolonnenavn_kommunenavn)
-popup_fylker   <- lag_popuptekst(fylkesdata, kolonne_fylkesnavn) 
+### Bunnlevende virvelløse dyr (biologiske elementer)
+Bunndyr lever på eller i sjøbunnen og inkluderer bl.a. krepsdyr og muslinger. Sammensetningen av arter sier mye om langtidsbelastningen på økosystemet - spesielt oksygenmangel, organisk forurensing og utslipp.
 
-# Farger til fylker og kommuner
-farge_fylke  <- "#D73027"  
-farge_kommuner <- "#4575B4"
+![Bunndyr på havbunnen](images/bunndyr.jpg)
 
-# Standard startposisjon for kartet
-start_latitude <- 64
-start_longitude <- 12
-start_zoom <- 5
 
-# Bygg leaflet-kart
-kart <- leaflet(options = leafletOptions(zoomControl = TRUE)) %>%
-  addProviderTiles(providers$CartoDB.Positron, group = "Bakgrunnskart") %>%
-  
-  # Fylkesgrenser
-  addPolygons(
-    data = fylkesdata,
-    color = farge_fylker,
-    weight = 1,
-    fillOpacity = 0.25,
-    label = ~ htmltools::HTML(paste0("<b>", htmlEscape(get(kolonne_fylkesnavn)), "</b>")),
-    popup = ~ popup_fylker,
-    group = "Fylker",
-    highlight = highlightOptions(weight = 3, bringToFront = TRUE)
-  ) %>%
-  
-  # Kommunegrenser
-  addPolygons(
-    data = kommunedata,
-    color = farge_kommuner,
-    weight = 0.8,
-    fillOpacity = 0.35,
-    label = ~ htmltools::HTML(paste0(htmlEscape(get(kolonne_kommunenavn)))),
-    popup = ~ popup_kommuner,
-    group = "Kommuner",
-    highlight = highlightOptions(weight = 3, bringToFront = TRUE)
-  ) %>%
-  
-  # Lagvelger for å slå av/på lag
-  addLayersControl(
-    baseGroups = c("Bakgrunnskart"),
-    overlayGroups = c("Fylker", "Kommuner"),
-    options = layersControlOptions(collapsed = FALSE)
-  ) %>%
-  
-  # Startvisning på kartet
-  setView(lng = start_longitude, lat = start_latitude, zoom = start_zoom)
+### Næringsstoffforhold (Fysisk-kjemiske elementer)
+Dette sier noe om konsentrasjonen av næringssalter som nitrogen og fosfor i vannet. For høye verdier fører til eutrofiering (overgjødsling), som skaper algeoppblomstringer og dårlige lys- og oksygenforhold.
 
-kart
+![Illustrasjon av algeoppblomstring](images/algae.jpg)
+
+
+### Oksygenforhold 
+
+Oksygennivået i dypvannet er en nøkkelindikator på miljøtilstand. Lav oksygennivå påvirker hele økosystemet og føre til tab av bunnfauna og endringer i næringskjeden.
+
+### Planteplankton
+
+Planteplankton reagerer raskt på endring i næringstilførsel og er derfor en god indikator på eutrofiering. Høye nivåer kan tyde på næringssaltbelastning, mens lav biomasse og normal sesongvariasjon indikerer stabile forhold. 
+
+
+### Siktedyp
+
+Siktedyp måler hvor langt ned i vannet man kan se. 
+Redusert sikt skyldes ofte alger, partikler eller sedimentpåvirkning, og gir dårligere lysforhold for makroalger og ålegras. 
+---
