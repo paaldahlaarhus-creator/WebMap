@@ -5,22 +5,22 @@
 library(readxl)
 library(dplyr)
 
-# Registrer hvor jeg henter filen fra
+# Legger stien for å avlese excel filen, må endres på ved bruk
 filsti <- "C:/Users/magnudam/OneDrive - Universitetet i Oslo/UIO Master/Data prosjekt/Økologisk komdata.xlsx"
 
 
-# 2. Hjelper funksjonen med å lese, endrer navn på siste kolonne og sorterer slik at verdier for samme kommune kommer etter hverandre
+# Hjelper funksjonen med å lese, endrer navn på siste kolonne og sorterer slik at verdier for samme kommune kommer etter hverandre
 prepare_period <- function(path, sheet_name) {
   df <- read_excel(path, sheet = sheet_name)
   
-  # Rename the LAST column to "Tilstand_element"
+  # Endrer navn på siste kolonne til "Tilstand_element"
   names(df)[ncol(df)] <- "Tilstand_element"
   
-  # Sort so that:
-  #  - primary order: Kvalitetselement (parameter)
-  #  - then Kommune
-  #  - then Navn (location name)
-  #  - then År (year), so multiple measures for same place/municipality go underneath each other
+  # arrange brukes for å sortere sånn at:
+  #  - viktigste variablen Kvalitetselement kommer først
+  #  - deretter Kommune
+  #  - deretter Navn, navn på lokasjon
+  #  - deretter År
   df <- df %>%
     arrange(`Kvalitetselement`, Kommune, Navn, `År`)
   
@@ -28,26 +28,27 @@ prepare_period <- function(path, sheet_name) {
 }
 
 
-# 3. Create the three datasets
+# 3. Danner 3 nye dataset
 
-# 2023 (sheet: "Alle kommuner 2023")
+# 2023 (sheet/ark: "Alle kommuner 2023")
 data_2023 <- prepare_period(
   path = filsti,
   sheet_name = "Alle kommuner 2023"
 )
 
-# 2022–2020 (sheet: "Alle kommuner 2022-2020")
+# 2022–2020 (sheet/ark: "Alle kommuner 2022-2020")
 data_2022_2020 <- prepare_period(
   path = filsti,
   sheet_name = "Alle kommuner 2022-2020"
 )
 
-# 2019–2015 (sheet: "Alle kommuner 2019 - 2015")
+# 2019–2015 (sheet/ark: "Alle kommuner 2019 - 2015")
 data_2019_2015 <- prepare_period(
   path = filsti,
   sheet_name = "Alle kommuner 2019 - 2015"
 )
-
+#Lager en funskjon som definerer de ulike nEQR verdiene som ulike tilstander,
+#nødvendig å spesifisere for å kunne kategorisere etter å slått sammen og tatt gjennomsnittet av nEQR av alle 
 classify_tilstand <- function(x) {
   case_when(
     x < 0.2              ~ "SVÆRT DÅRLIG",
@@ -59,9 +60,9 @@ classify_tilstand <- function(x) {
   )
 }
 
-# ---------------------
-# 5. Helper: merge rows + clean columns
-# ---------------------
+
+# Hjelper med å slå sammen rader og rense kolonnene for ikke relevante variabler
+
 make_merged_dataset <- function(df) {
   df %>%
     select(
@@ -73,9 +74,9 @@ make_merged_dataset <- function(df) {
         "Antall påvirkningstyper"
       ))
     ) %>%
-    group_by(Kommune, Kvalitetselement, År) %>%
+    group_by(Kommune, Kvalitetselement, År) %>% #Kriteriene for at man skal slå sammen variablen 
     summarise(
-      nEQR = mean(nEQR, na.rm = TRUE),
+      nEQR = mean(nEQR, na.rm = TRUE), #Beregner gjennomsnittet av de ulike nEQR verdiene av observasjoner som er like,
       .groups = "drop"
     ) %>%
     mutate(
@@ -84,9 +85,9 @@ make_merged_dataset <- function(df) {
     relocate(Kommune)
 }
 
-# ---------------------
-# 6. Create the three new merged datasets
-# ---------------------
+
+# Lager 3 nye sammenslåtte variabler datasett
+
 data_2023_merged       <- make_merged_dataset(data_2023)
 data_2022_2020_merged  <- make_merged_dataset(data_2022_2020)
 data_2019_2015_merged  <- make_merged_dataset(data_2019_2015)
@@ -99,7 +100,7 @@ View(data_2019_2015_merged)
 
 
 library(qs)
-
+#Lagrer de tre ulike datasettene i riktig lokasjon
 qs::qsave(
   data_2023_merged,
   "C:/Users/magnudam/OneDrive - Universitetet i Oslo/UIO Master/Data prosjekt/WebMap-main/data/eco_2023_merged.qs"
