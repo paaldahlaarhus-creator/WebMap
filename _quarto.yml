@@ -9,9 +9,6 @@ website:
         text: "Global natur"
       - href: pages/Oslofjord.qmd
         text: "Oslofjorden"
-      - href: pages/kommunekart.qmd
-        text: "Kommunekart"
-
 format:
   html:
     theme: cosmo
