@@ -1,3 +1,124 @@
+## Oslofjord – Økologisk tilstand
+<!--Denne Html delen bygger strukturen på dashboarder  -->
+Velg først målingstype, så tidsperiode:
+
+<div id="measure-controls" style="margin-bottom: 0.5rem;">
+  <strong>Målingstype:</strong> <!-- strong uthever teksten -->
+  <button type="button" class="measure-btn" data-measure="avg"  onclick="setMeasure('avg')">Gjennomsnittsmåling</button><!-- Denne koden legger til knappen, classifiserer den tildeler den datasett -->
+  <button type="button" class="measure-btn" data-measure="low"  onclick="setMeasure('low')">Laveste måling</button>
+  <button type="button" class="measure-btn" data-measure="high" onclick="setMeasure('high')">Høyeste måling</button>
+</div>
+
+<div id="period-controls" style="margin-bottom: 0.5rem;">
+  <strong>Periode:</strong> <!-- gjør akkurat det samme som over bare for periode knappene --> 
+  <button type="button" class="period-btn" data-period="p2023"       onclick="setPeriod('p2023')">2023</button>
+  <button type="button" class="period-btn" data-period="p2020_2022"  onclick="setPeriod('p2020_2022')">2020–2022</button>
+  <button type="button" class="period-btn" data-period="p2019_2015"  onclick="setPeriod('p2019_2015')">2015–2019</button>
+</div>
+
+<div id="current-selection" style="margin-bottom: 1rem; font-weight: bold;">
+  <!-- Her fylles tekst inn av JavaScript -->
+</div>
+
+<style>
+  #measure-controls button,
+  #period-controls button {
+    margin-left: 0.25rem;
+    margin-right: 0.25rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #f5f5f5;
+    cursor: pointer;
+  }
+
+  #measure-controls button.active,<!-- marker knappen blå når den er aktiv --> 
+  #period-controls button.active {
+    background-color: #2c7fb8;
+    color: white;
+    border-color: #2c7fb8;
+  }
+</style>
+
+<script>
+  let currentMeasure = 'avg';
+  let currentPeriod  = 'p2023';
+
+  const allMapIds = [
+    'map_avg_p2023', 'map_avg_p2020_2022', 'map_avg_p2019_2015',
+    'map_low_p2023', 'map_low_p2020_2022', 'map_low_p2019_2015',
+    'map_high_p2023','map_high_p2020_2022','map_high_p2019_2015'
+  ];
+
+  const measureLabels = {
+    'avg':  'Gjennomsnittsmåling',
+    'low':  'Laveste måling',
+    'high': 'Høyeste måling'
+  };
+
+  const periodLabels = {
+    'p2023':       '2023',
+    'p2020_2022':  '2020–2022',
+    'p2019_2015':  '2015–2019'
+  };
+
+  function updateButtonStyles() { <!-- Disse funskjonene er JS som her brukes til og formatere nettsiden --> 
+    // Målingstype-knapper
+    document.querySelectorAll('#measure-controls .measure-btn').forEach(function(btn) {
+      const m = btn.getAttribute('data-measure');
+      if (m === currentMeasure) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active'); <!-- if aktiverer knappen så den faktisk endrer seg hvis den er trykket på, else fjerner den --> 
+      }
+    });
+
+    // Periode-knapper
+    document.querySelectorAll('#period-controls .period-btn').forEach(function(btn) {
+      const p = btn.getAttribute('data-period');
+      if (p === currentPeriod) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+  }
+
+  function updateLabel() {
+    const el = document.getElementById('current-selection');
+    if (!el) return;
+    const mLabel = measureLabels[currentMeasure] || '';
+    const pLabel = periodLabels[currentPeriod]   || '';
+    el.textContent = mLabel + ' – ' + pLabel;   <!-- koden legger til tekst over kartet som beskriver hvilket mål som er brukt og i hvilken periode --> 
+  }
+
+  function updateVisibleMap() {
+    const targetId = 'map_' + currentMeasure + '_' + currentPeriod;
+    allMapIds.forEach(function(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.style.display = (id === targetId) ? 'block' : 'none';
+    }); <!-- oppdaterer det kartet som er synlig --> 
+    updateButtonStyles();
+    updateLabel();
+  }
+
+  function setMeasure(m) {
+    currentMeasure = m;
+    updateVisibleMap();
+  }
+
+  function setPeriod(p) {
+    currentPeriod = p;
+    updateVisibleMap();
+  }
+
+  document.addEventListener("DOMContentLoaded", function() {
+    updateVisibleMap(); // vis gjennomsnitt 2023 som default og sett aktive knapper + label
+  });
+</script>
+
+
 ```{r}
 library(here)
 library(qs)
@@ -182,3 +303,4 @@ m |>
 
 
 ```
+
