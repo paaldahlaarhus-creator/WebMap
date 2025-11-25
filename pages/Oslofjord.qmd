@@ -118,9 +118,8 @@ Velg først målingstype, så tidsperiode:
   });
 </script>
 
-
-```{r}
-library(here)
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+library(here) #laster ned nødvendige pakker
 library(qs)
 library(sf)
 library(leaflet)
@@ -128,10 +127,7 @@ library(htmltools)
 library(dplyr)
 library(stringr)
 
-#---------------------------
-# 1. Hjelper: les kart
-#---------------------------
-read_map <- function(qs_path, geojson_path) {
+read_map <- function(qs_path, geojson_path) {  #lager funksjonen readmap som har to argumenter en for rask data håndtering qs, og hvis den ikke funker bruker den geojson
   if (file.exists(qs_path)) {
     tryCatch(
       qs::qread(qs_path),
@@ -145,7 +141,6 @@ read_map <- function(qs_path, geojson_path) {
   }
 }
 
-# Standardiser kommunenavn: trim + lower-case
 clean_name <- function(x) {
   x |>
     as.character() |>
@@ -153,12 +148,21 @@ clean_name <- function(x) {
     str_to_lower()
 }
 
-#---------------------------
-# 2. Last inn kommunekart
-#---------------------------
-komm_qs  <- here("data", "kommuner.qs")
-komm_geo <- here("www", "assets", "kommuner.geojson")
-kommuner <- read_map(komm_qs, komm_geo)
+tilstand_color <- function(x) {
+  dplyr::case_when(
+    x == "SVÆRT GOD"    ~ "#08306b",
+    x == "GOD"          ~ "#41ab5d",
+    x == "MODERAT"      ~ "#ffffb2",
+    x == "DÅRLIG"       ~ "#fe9929",
+    x == "SVÆRT DÅRLIG" ~ "#de2d26",
+    TRUE                ~ "#cccccc"
+  )
+}
+
+# Kartdata
+sti_komm_qs  <- here("data", "kommuner.qs")
+sti_komm_geo <- here("www", "assets", "kommuner.geojson")
+kommuner <- read_map(sti_komm_qs, sti_komm_geo)
 
 if (is.na(sf::st_crs(kommuner))) sf::st_crs(kommuner) <- 4258
 kommuner <- sf::st_transform(kommuner, 4326)
@@ -169,11 +173,9 @@ if (!lab_komm %in% names(kommuner)) {
        paste(names(kommuner), collapse = ", "))
 }
 
-# Lag nøkkel for matching i kartdata
 kommuner <- kommuner |>
   mutate(name_key = clean_name(kommunenavn))
 
-# Oslofjord-kommuner (logiske navn)
 oslofjord_names <- c(
   "Oslo","Bærum","Asker","Nesodden","Frogn","Ås","Vestby","Moss",
   "Fredrikstad","Hvaler","Tønsberg","Horten","Larvik","Sandefjord",
@@ -184,123 +186,128 @@ oslofjord_names <- c(
 oslofjord_keys <- clean_name(oslofjord_names)
 
 of_komm <- kommuner |>
-  filter(name_key %in% oslofjord_keys)
+  dplyr::filter(name_key %in% oslofjord_keys)
 
-#---------------------------
-# 3. Les eco_2023_merged
-#---------------------------
-eco_path <- here("data", "eco_2023_merged.qs")
-if (!file.exists(eco_path)) {
-  stop("Finner ikke fila: ", eco_path)
-}
-eco_2023 <- qs::qread(eco_path)
-
-stopifnot(all(c("Kommune","Kvalitetselement","År","nEQR","Tilstand_element") %in% names(eco_2023)))
-
-# Nøkkel i eco-data (inkl. fiks for PROSGRUNN -> Porsgrunn)
-eco_2023 <- eco_2023 |>
-  mutate(
-    Kommune_key = clean_name(Kommune),
-    Kommune_key = if_else(Kommune_key == "prosgrunn", "porsgrunn", Kommune_key)
-  ) |>
-  # bare Oslofjord-kommunene
-  filter(Kommune_key %in% oslofjord_keys)
-
-# Hent alle unike kvalitetselementer som faktisk finnes for Oslofjord-kommunene
-ke_levels <- sort(unique(eco_2023$Kvalitetselement))
-
-#---------------------------
-# 4. Fargefunksjon for Tilstand_element
-#---------------------------
-tilstand_color <- function(x) {
-  case_when(
-    x == "SVÆRT GOD"    ~ "#08306b",  # mørk blå
-    x == "GOD"          ~ "#41ab5d",  # lys grønn
-    x == "MODERAT"      ~ "#ffffb2",  # gul
-    x == "DÅRLIG"       ~ "#fe9929",  # oransje
-    x == "SVÆRT DÅRLIG" ~ "#de2d26",  # rød
-    TRUE                ~ "#cccccc"   # grå: ingen data
-  )
-}
-
-#---------------------------
-# 5. Lag ett kart-lag per Kvalitetselement
-#   - En kommune er FARGET i et lag kun hvis den har data for det elementet
-#   - Fargen bestemmes av Tilstand_element
-#---------------------------
-ke_maps <- list()
-
-for (ke in ke_levels) {
-  eco_ke <- eco_2023 |>
-    filter(Kvalitetselement == ke) |>
-    group_by(Kommune_key, Kommune, Kvalitetselement) |>
-    summarise(
-      nEQR            = mean(nEQR, na.rm = TRUE),
-      Tilstand_element = first(na.omit(Tilstand_element), default = NA_character_),
-      .groups = "drop"
-    )
+build_map_for_period <- function(eco_qs_path) {
+  if (!file.exists(eco_qs_path)) {
+    stop("Finner ikke fila: ", eco_qs_path)
+  }
   
-  of_komm_ke <- of_komm |>
-    left_join(
-      eco_ke,
-      by = c("name_key" = "Kommune_key")
-    )
+  eco <- qs::qread(eco_qs_path)
   
-  ke_maps[[ke]] <- of_komm_ke
-}
-
-#---------------------------
-# 6. Bygg leaflet-kart
-#   - Ett overlay-lag per Kvalitetselement
-#   - Kommuner uten data for valgt element blir grå (NA -> grå i tilstand_color)
-#---------------------------
-m <- leaflet(options = leafletOptions(zoomControl = TRUE)) |>
-  addProviderTiles(providers$CartoDB.Positron)
-
-m <- leaflet(options = leafletOptions(zoomControl = TRUE)) |>
-  addProviderTiles(providers$CartoDB.Positron)
-
-for (ke in ke_levels) {
-  ke_label <- ke
+  stopifnot(all(c("Kommune","Kvalitetselement","År","nEQR","Tilstand_element") %in% names(eco)))
   
-  # ta ut data for dette elementet og lag én popup-tekst per rad
-  ke_data <- ke_maps[[ke]] |>
+  eco <- eco |>
     mutate(
-      popup_text = paste0(
-        "<b>", kommunenavn, "</b><br>",
-        "Kvalitetselement: ", ke_label, "<br>",
-        "Tilstand: ",
-        ifelse(is.na(Tilstand_element), "Ingen data", Tilstand_element), "<br>",
-        "nEQR: ",
-        ifelse(is.na(nEQR), "–", sprintf("%.3f", nEQR))
-      )
-    )
+      Kommune_key = clean_name(Kommune),
+      Kommune_key = if_else(Kommune_key == "prosgrunn", "porsgrunn", Kommune_key)
+    ) |>
+    dplyr::filter(Kommune_key %in% oslofjord_keys)
   
-  m <- m |>
-    addPolygons(
-      data        = ke_data,
-      group       = ke,           # brukes i filter-menyen
-      color       = "#444444",
-      weight      = 1,
-      fillOpacity = 0.7,
-      fillColor   = ~ tilstand_color(Tilstand_element),
-      # ÉN label per rad – ikke én stor streng
-      label       = ~ lapply(popup_text, htmltools::HTML)
-      # evt. bruk popup i stedet:
-      # popup      = ~ lapply(popup_text, htmltools::HTML)
-    )
+  ke_levels <- sort(unique(eco$Kvalitetselement))
+  ke_maps   <- vector("list", length(ke_levels))
+  names(ke_maps) <- ke_levels
+  
+  for (ke in ke_levels) {
+    eco_ke <- eco |>
+      dplyr::filter(Kvalitetselement == ke) |>
+      dplyr::group_by(Kommune_key, Kommune, Kvalitetselement) |>
+      dplyr::summarise(
+        nEQR             = mean(nEQR, na.rm = TRUE),
+        Tilstand_element = dplyr::first(na.omit(Tilstand_element), default = NA_character_),
+        .groups = "drop"
+      )
+    
+    of_komm_ke <- of_komm |>
+      dplyr::left_join(
+        eco_ke,
+        by = c("name_key" = "Kommune_key")
+      )
+    
+    ke_maps[[ke]] <- of_komm_ke
+  }
+  
+  m <- leaflet(options = leafletOptions(zoomControl = TRUE)) |>
+    addProviderTiles(providers$CartoDB.Positron)
+  
+  for (ke in ke_levels) {
+    ke_label <- ke
+    
+    ke_data <- ke_maps[[ke]] |>
+      dplyr::mutate(
+        popup_text = paste0(
+          "<b>", kommunenavn, "</b><br>",
+          "Kvalitetselement: ", ke_label, "<br>",
+          "Tilstand: ",
+          ifelse(is.na(Tilstand_element), "Ingen data", Tilstand_element), "<br>",
+          "nEQR: ",
+          ifelse(is.na(nEQR), "–", sprintf("%.3f", nEQR))
+        )
+      )
+    
+    m <- m |>
+      addPolygons(
+        data        = ke_data,
+        group       = ke,
+        color       = "#444444",
+        weight      = 1,
+        fillOpacity = 0.7,
+        fillColor   = ~ tilstand_color(Tilstand_element),
+        label       = ~ lapply(popup_text, htmltools::HTML)
+      )
+  }
+  
+  m |>
+    addLayersControl(
+      baseGroups    = c("Kvalitetselementer"),
+      overlayGroups = ke_levels,
+      options       = layersControlOptions(collapsed = FALSE)
+    ) |>
+    setView(lng = 10.5, lat = 59.2, zoom = 8)
 }
-
-m |>
-  addLayersControl(
-    baseGroups    = c("Kvalitetselementer"),
-    overlayGroups = ke_levels,
-    options       = layersControlOptions(collapsed = FALSE)
-  ) |>
-  setView(lng = 10.5, lat = 59.2, zoom = 8)
-
-
-
-
 ```
 
+
+```{r build-maps, echo=FALSE, message=FALSE, warning=FALSE}
+# Gjennomsnitt (merged)
+m_avg_2023       <- build_map_for_period(here("data", "eco_2023_merged.qs"))
+m_avg_2022_2020  <- build_map_for_period(here("data", "eco_2022_2020_merged.qs"))
+m_avg_2019_2015  <- build_map_for_period(here("data", "eco_2019_2015_merged.qs"))
+
+# Laveste
+m_low_2023       <- build_map_for_period(here("data", "eco_2023_lowest.qs"))
+m_low_2022_2020  <- build_map_for_period(here("data", "eco_2022_2020_lowest.qs"))
+m_low_2019_2015  <- build_map_for_period(here("data", "eco_2019_2015_lowest.qs"))
+
+# Høyeste
+m_high_2023      <- build_map_for_period(here("data", "eco_2023_highest.qs"))
+m_high_2022_2020 <- build_map_for_period(here("data", "eco_2022_2020_highest.qs"))
+m_high_2019_2015 <- build_map_for_period(here("data", "eco_2019_2015_highest.qs"))
+
+# Sett elementId så HTML/JS kan styre hva som vises
+m_avg_2023$elementId       <- "map_avg_p2023"
+m_avg_2022_2020$elementId  <- "map_avg_p2020_2022"
+m_avg_2019_2015$elementId  <- "map_avg_p2019_2015"
+
+m_low_2023$elementId       <- "map_low_p2023"
+m_low_2022_2020$elementId  <- "map_low_p2020_2022"
+m_low_2019_2015$elementId  <- "map_low_p2019_2015"
+
+m_high_2023$elementId      <- "map_high_p2023"
+m_high_2022_2020$elementId <- "map_high_p2020_2022"
+m_high_2019_2015$elementId <- "map_high_p2019_2015"
+
+# Print alle 9 kart – JS skjuler/viser riktig
+m_avg_2023
+m_avg_2022_2020
+m_avg_2019_2015
+
+m_low_2023
+m_low_2022_2020
+m_low_2019_2015
+
+m_high_2023
+m_high_2022_2020
+m_high_2019_2015
+
+```
